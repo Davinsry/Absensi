@@ -126,7 +126,7 @@
                     statusElement.textContent = `Mengirim data untuk ${namaPeserta}...`;
 
                     const timestamp = new Date().toISOString();
-                    const finalData = `${decodedText}&Kedatangan=${timestamp}`;
+                    const finalData = `hash=${decodedText}&Kedatangan=${timestamp}`;
 
                     fetch(`${webhookUrl}?${finalData}`)
                         .then(response => {
