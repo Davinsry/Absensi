@@ -1,0 +1,159 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Scanner Absensi Panitia</title>
+    <style>
+        body {
+            font-family: sans-serif;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+            text-align: center;
+            margin: 0;
+            background-color: #333;
+            color: white;
+        }
+        #qr-reader {
+            width: 90%;
+            max-width: 500px;
+            border: 2px solid #00ff7f;
+            border-radius: 8px;
+            overflow: hidden;
+            display: none; /* Sembunyikan scanner di awal */
+        }
+        #status {
+            margin-top: 20px;
+            font-size: 1.2em;
+            min-height: 50px;
+        }
+        .action-button {
+            padding: 15px 30px;
+            font-size: 1.2em;
+            cursor: pointer;
+            border-radius: 8px;
+            border: none;
+            background-color: #00ff7f;
+            color: #111;
+            margin-top: 20px;
+        }
+        #scan-again-button {
+            display: none;
+        }
+    </style>
+</head>
+<body>
+    <div id="qr-reader"></div>
+    <h2 id="status">Selamat Datang Panitia</h2>
+    <button id="start-scan-button" class="action-button">Mulai Absensi</button>
+    <button id="scan-again-button" class="action-button">Scan Peserta Berikutnya</button>
+
+    <script src="https://unpkg.com/html5-qrcode@2.3.8/html5-qrcode.min.js"></script>
+    <script>
+        document.addEventListener('DOMContentLoaded', () => {
+            const webhookUrl = 'https://n8n-aa64.bgd.my.id/webhook/AkrabMuda';
+            const statusElement = document.getElementById('status');
+            const scanAgainButton = document.getElementById('scan-again-button');
+            const startScanButton = document.getElementById('start-scan-button');
+            const qrReaderDiv = document.getElementById('qr-reader');
+            const html5QrCode = new Html5Qrcode("qr-reader");
+            let audioUnlocked = false;
+            let daftarSuara = [];
+
+            // --- FUNGSI BARU UNTUK MEMUAT DAFTAR SUARA ---
+            function muatDaftarSuara() {
+                daftarSuara = window.speechSynthesis.getVoices();
+            }
+            
+            // Panggil fungsi ini di awal dan saat daftar suara berubah
+            muatDaftarSuara();
+            if (speechSynthesis.onvoiceschanged !== undefined) {
+                speechSynthesis.onvoiceschanged = muatDaftarSuara;
+            }
+            // ---------------------------------------------
+
+            function ucapkanTeks(teks) {
+                if (!audioUnlocked) return;
+                window.speechSynthesis.cancel();
+                if ('speechSynthesis' in window) {
+                    const utterance = new SpeechSynthesisUtterance(teks);
+                    
+                    // --- LOGIKA BARU UNTUK MEMILIH SUARA OTOMATIS ---
+                    const suaraIndonesia = daftarSuara.find(suara => suara.lang === 'id-ID');
+
+                    if (suaraIndonesia) {
+                        // Jika ditemukan suara Bahasa Indonesia, gunakan itu
+                        utterance.voice = suaraIndonesia;
+                    } else {
+                        // Jika tidak, gunakan pengaturan bahasa default (fallback)
+                        utterance.lang = 'id-ID';
+                    }
+                    // ------------------------------------------------
+
+                    utterance.rate = 0.9;
+                    window.speechSynthesis.speak(utterance);
+                } else {
+                    console.log("Browser Anda tidak mendukung Text-to-Speech.");
+                }
+            }
+
+            function startScanner() {
+                statusElement.textContent = "Arahkan kamera ke QR Code Peserta";
+                scanAgainButton.style.display = 'none';
+                qrReaderDiv.style.display = 'block';
+                
+                html5QrCode.start(
+                    { facingMode: "environment" },
+                    { fps: 10, qrbox: { width: 250, height: 250 } },
+                    onScanSuccess,
+                    () => {}
+                ).catch((err) => {
+                    statusElement.textContent = "Gagal memulai kamera. Pastikan Anda memberikan izin.";
+                });
+            }
+
+            function onScanSuccess(decodedText, decodedResult) {
+                html5QrCode.stop().then(() => {
+                    qrReaderDiv.style.display = 'none';
+                    const params = new URLSearchParams(decodedText);
+                    const namaPeserta = params.get('Nama') || 'Peserta';
+                    statusElement.textContent = `Mengirim data untuk ${namaPeserta}...`;
+
+                    const timestamp = new Date().toISOString();
+                    const finalData = `${decodedText}&Kedatangan=${timestamp}`;
+
+                    fetch(`${webhookUrl}?${finalData}`)
+                        .then(response => {
+                            if (response.ok) {
+                                statusElement.textContent = `✅ Absensi untuk ${namaPeserta} berhasil direkam!`;
+                                ucapkanTeks(`Telah diabsensi atas nama ${namaPeserta}`);
+                            } else {
+                                statusElement.textContent = `❌ Gagal mengirim data untuk ${namaPeserta}.`;
+                                ucapkanTeks("Absensi gagal");
+                            }
+                            scanAgainButton.style.display = 'block';
+                        })
+                        .catch(error => {
+                            statusElement.textContent = "Terjadi error saat mengirim data.";
+                            ucapkanTeks("Koneksi error");
+                            scanAgainButton.style.display = 'block';
+                        });
+                });
+            }
+            
+            startScanButton.addEventListener('click', () => {
+                const utterance = new SpeechSynthesisUtterance(' ');
+                window.speechSynthesis.speak(utterance);
+                audioUnlocked = true;
+                startScanButton.style.display = 'none';
+                startScanner();
+            });
+
+            scanAgainButton.addEventListener('click', startScanner);
+        });
+    </script>
+</body>
+</html>
