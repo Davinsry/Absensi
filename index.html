@@ -17,6 +17,43 @@
             background-color: #333;
             color: white;
         }
+
+        /* --- STYLING LOGIN BARU --- */
+        #login-form {
+            display: flex; /* Tampil di awal */
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            width: 100%;
+        }
+        .login-input {
+            font-size: 1.1em;
+            padding: 10px;
+            margin-top: 10px;
+            width: 80%;
+            max-width: 400px;
+            border-radius: 5px;
+            border: 1px solid #ccc;
+            color: #333;
+            background-color: #f4f4f4;
+        }
+        #login-status {
+            margin-top: 15px;
+            font-size: 1em;
+            min-height: 1.2em;
+            color: #ffc0cb; /* Pink muda agar kontras */
+        }
+        /* -------------------------- */
+
+
+        /* --- STYLING SCANNER ASLI --- */
+        #scanner-app {
+            display: none; /* Sembunyi di awal */
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            width: 100%;
+        }
         #qr-reader {
             width: 90%;
             max-width: 500px;
@@ -46,18 +83,33 @@
     </style>
 </head>
 <body>
-    <div id="qr-reader"></div>
-    <h2 id="status">Selamat Datang Panitia</h2>
-    <button id="start-scan-button" class="action-button">Mulai Absensi</button>
-    <button id="scan-again-button" class="action-button">Scan Peserta Berikutnya</button>
+
+    <div id="login-form">
+        <h2>Login Panitia</h2>
+        <input type="text" id="username" placeholder="Username" class="login-input">
+        <input type="password" id="password" placeholder="Password" class="login-input">
+        <button id="login-button" class="action-button">Login</button>
+        <p id="login-status"></p>
+    </div>
+
+    <div id="scanner-app">
+        <div id="qr-reader"></div>
+        <h2 id="status">Selamat Datang Panitia</h2>
+        <button id="start-scan-button" class="action-button">Mulai Absensi</button>
+        <button id="scan-again-button" class="action-button">Scan Peserta Berikutnya</button>
+    </div>
 
     <script src="https://unpkg.com/html5-qrcode@2.3.8/html5-qrcode.min.js"></script>
     <script>
         document.addEventListener('DOMContentLoaded', () => {
-            // --- INI ADALAH URL YANG SUDAH DIUBAH ---
+            // --- URL WEBHOOK ABSENSI (ASLI) ---
             const webhookUrl = 'https://n8n-x5ircifhjkj5.n8x.biz.id/webhook/Gamping_absensi';
-            // -----------------------------------------
+            
+            // --- URL WEBHOOK LOGIN (BARU) ---
+            // !!! GANTI DENGAN URL WEBHOOK LOGIN N8N ANDA !!!
+            const loginWebhookUrl = 'https://n8n-x5ircifhjkj5.n8x.biz.id/webhook/Login-Panitia'; 
 
+            // --- Elemen Scanner (Asli) ---
             const statusElement = document.getElementById('status');
             const scanAgainButton = document.getElementById('scan-again-button');
             const startScanButton = document.getElementById('start-scan-button');
@@ -66,36 +118,35 @@
             let audioUnlocked = false;
             let daftarSuara = [];
 
-            // --- FUNGSI BARU UNTUK MEMUAT DAFTAR SUARA ---
+            // --- Elemen Login (Baru) ---
+            const loginForm = document.getElementById('login-form');
+            const scannerApp = document.getElementById('scanner-app');
+            const loginButton = document.getElementById('login-button');
+            const usernameInput = document.getElementById('username');
+            const passwordInput = document.getElementById('password');
+            const loginStatus = document.getElementById('login-status');
+            let namaPanitia = 'Panitia'; // Untuk menyimpan nama panitia yg login
+
+            // --- FUNGSI-FUNGSI SCANNER (ASLI) ---
             function muatDaftarSuara() {
                 daftarSuara = window.speechSynthesis.getVoices();
             }
-            
-            // Panggil fungsi ini di awal dan saat daftar suara berubah
             muatDaftarSuara();
             if (speechSynthesis.onvoiceschanged !== undefined) {
                 speechSynthesis.onvoiceschanged = muatDaftarSuara;
             }
-            // ---------------------------------------------
 
             function ucapkanTeks(teks) {
                 if (!audioUnlocked) return;
                 window.speechSynthesis.cancel();
                 if ('speechSynthesis' in window) {
                     const utterance = new SpeechSynthesisUtterance(teks);
-                    
-                    // --- LOGIKA BARU UNTUK MEMILIH SUARA OTOMATIS ---
                     const suaraIndonesia = daftarSuara.find(suara => suara.lang === 'id-ID');
-
                     if (suaraIndonesia) {
-                        // Jika ditemukan suara Bahasa Indonesia, gunakan itu
                         utterance.voice = suaraIndonesia;
                     } else {
-                        // Jika tidak, gunakan pengaturan bahasa default (fallback)
                         utterance.lang = 'id-ID';
                     }
-                    // ------------------------------------------------
-
                     utterance.rate = 0.9;
                     window.speechSynthesis.speak(utterance);
                 } else {
@@ -141,12 +192,71 @@
                         })
                         .catch(error => {
                             statusElement.textContent = "Terjadi error saat mengirim data.";
-                            ucapkanTeks("Koneksi error");
+                            ucapakanTeks("Koneksi error");
                             scanAgainButton.style.display = 'block';
                         });
                 });
             }
+
+            // --- FUNGSI LOGIN (BARU) ---
+            async function handleLogin() {
+                const username = usernameInput.value;
+                const password = passwordInput.value;
+
+                if (!username || !password) {
+                    loginStatus.textContent = 'Username dan Password harus diisi.';
+                    return;
+                }
+
+                loginStatus.textContent = 'Mencoba login...';
+                loginButton.disabled = true;
+
+                try {
+                    // Kirim data ke n8n sebagai query parameter
+                    const response = await fetch(`${loginWebhookUrl}?user=${encodeURIComponent(username)}&pass=${encodeURIComponent(password)}`);
+                    
+                    if (!response.ok) {
+                        throw new Error('Respon server tidak baik.');
+                    }
+
+                    const data = await response.json(); // Menunggu balasan JSON dari n8n
+
+                    if (data.status === 'success') {
+                        // Login Berhasil
+                        namaPanitia = data.nama || 'Panitia';
+                        loginStatus.textContent = 'Login Berhasil!';
+                        
+                        // Sembunyikan login, tampilkan scanner
+                        loginForm.style.display = 'none';
+                        scannerApp.style.display = 'flex'; // Gunakan flex agar layoutnya benar
+                        
+                        // Atur nama panitia di status scanner
+                        statusElement.textContent = `Selamat Datang, ${namaPanitia}`;
+                    } else {
+                        // Login Gagal (sesuai balasan n8n)
+                        throw new Error(data.message || 'Username atau Password salah.');
+                    }
+
+                } catch (error) {
+                    loginStatus.textContent = `Error: ${error.message}`;
+                } finally {
+                    loginButton.disabled = false; // Aktifkan lagi tombolnya
+                }
+            }
+
+            // --- PENGATUR EVENT LISTENER (DIUBAH) ---
             
+            // Listener untuk tombol Login (BARU)
+            loginButton.addEventListener('click', handleLogin);
+            
+            // Opsional: Izinkan login dengan menekan 'Enter' di field password
+            passwordInput.addEventListener('keyup', (event) => {
+                if (event.key === 'Enter') {
+                    handleLogin();
+                }
+            });
+
+            // Listener untuk scanner (Asli)
             startScanButton.addEventListener('click', () => {
                 const utterance = new SpeechSynthesisUtterance(' ');
                 window.speechSynthesis.speak(utterance);
