@@ -18,7 +18,7 @@
             color: white;
             overflow: hidden; /* Mencegah scroll */
         }
-
+        /* ... [CSS Anda yang lain tetap sama] ... */
         /* --- STYLING LOGIN --- */
         #login-form {
             display: flex;
@@ -42,7 +42,6 @@
             min-height: 1.2em;
             color: #ffc0cb;
         }
-
         /* --- STYLING DASHBOARD (BARU) --- */
         #dashboard-view {
             display: none; /* Sembunyi di awal */
@@ -71,7 +70,6 @@
             color: #00ff7f;
             font-size: 1.5em;
         }
-
         /* --- STYLING SCANNER --- */
         #scanner-app {
             display: none; /* Sembunyi di awal */
@@ -144,16 +142,15 @@
         document.addEventListener('DOMContentLoaded', () => {
             // --- URL WEBHOOK ---
             const webhookUrl = 'https://n8n-x5ircifhjkj5.n8x.biz.id/webhook/Gamping_absensi';
-            const loginWebhookUrl = 'https://n8n-x5ircifhjkj5.n8x.biz.id/webhook/Login-Panitia'; // !! GANTI INI
-            // --- URL WEBHOOK DASHBOARD (BARU) ---
-            const dashboardWebhookUrl = 'https://n8n-x5ircifhjkj5.n8x.biz.id/webhook/get-dashboard-data'; // !! GANTI INI
+            const loginWebhookUrl = 'https://n8n-x5ircifhjkj5.n8x.biz.id/webhook/Login-Panitia';
+            const dashboardWebhookUrl = 'https://n8n-x5ircifhjkj5.n8x.biz.id/webhook/get-dashboard-data';
 
             // --- Elemen Global ---
             const html5QrCode = new Html5Qrcode("qr-reader");
             let audioUnlocked = false;
             let daftarSuara = [];
             let namaPanitia = 'Panitia';
-            let dashboardInterval; // Untuk menyimpan interval refresh
+            let dashboardInterval; 
 
             // --- Elemen Login ---
             const loginForm = document.getElementById('login-form');
@@ -162,7 +159,7 @@
             const passwordInput = document.getElementById('password');
             const loginStatus = document.getElementById('login-status');
             
-            // --- Elemen Dashboard (BARU) ---
+            // --- Elemen Dashboard ---
             const dashboardView = document.getElementById('dashboard-view');
             const dashboardTitleEl = document.getElementById('dashboard-title');
             const totalHadirEl = document.getElementById('total-hadir');
@@ -172,12 +169,12 @@
             const scannerApp = document.getElementById('scanner-app');
             const statusElement = document.getElementById('status');
             const scanAgainButton = document.getElementById('scan-again-button');
-            const startScanButton = document.getElementById('start-scan-button'); // Tombol ini sekarang di dashboard
+            const startScanButton = document.getElementById('start-scan-button'); 
             const qrReaderDiv = document.getElementById('qr-reader');
-            const backToDashboardButton = document.getElementById('back-to-dashboard-button'); // Tombol baru
+            const backToDashboardButton = document.getElementById('back-to-dashboard-button');
 
 
-            // --- FUNGSI LOGIN ---
+            // --- FUNGSI LOGIN (DIMODIFIKASI) ---
             async function handleLogin() {
                 const username = usernameInput.value;
                 const password = passwordInput.value;
@@ -197,10 +194,15 @@
                         namaPanitia = data.nama || 'Panitia';
                         loginStatus.textContent = 'Login Berhasil!';
                         
-                        // --- PERUBAHAN LOGIKA ---
-                        // Sembunyikan login, tampilkan DASHBOARD
                         loginForm.style.display = 'none';
-                        showDashboard(); // Panggil fungsi baru
+
+                        // --- PERUBAHAN UTAMA ---
+                        // 1. Render data "nebengan" dari login SEKARANG
+                        // Safety check '|| []' jika data.dashboardData tidak ada
+                        renderDashboard(data.dashboardData || []); 
+                        
+                        // 2. Panggil showDashboard HANYA untuk menampilkan DIV-nya
+                        showDashboard();
                         // -----------------------
 
                     } else {
@@ -213,58 +215,71 @@
                 }
             }
 
-            // --- FUNGSI DASHBOARD (BARU SEMUA) ---
+            // --- FUNGSI BARU UNTUK RENDER DATA ---
+            function renderDashboard(data) {
+                // Pastikan data adalah array
+                if (!Array.isArray(data)) {
+                    console.error("renderDashboard menerima data yang bukan array:", data);
+                    daftarHadirEl.innerHTML = "<p>Error: Format data salah.</p>";
+                    return;
+                }
+                
+                // 1. Update total
+                totalHadirEl.textContent = data.length;
+
+                // 2. Buat daftar list
+                if (data.length === 0) {
+                    daftarHadirEl.innerHTML = "<p>Belum ada peserta yang hadir.</p>";
+                    return;
+                }
+
+                let html = '<ul>';
+                for (const item of data) {
+                    // Data dari 'nebeng' memiliki format {json: {Nama: ...}}
+                    const nama = item.json.Nama || 'Nama Tidak Ditemukan';
+                    const waktuDatang = item.json.Kedatangan ? new Date(item.json.Kedatangan).toLocaleTimeString('id-ID') : 'N/A';
+                    html += `<li>${nama} - <i>(${waktuDatang})</i></li>`;
+                }
+                html += '</ul>';
+                daftarHadirEl.innerHTML = html;
+            }
+
+            // --- FUNGSI DASHBOARD (DIMODIFIKASI) ---
             function showDashboard() {
                 // Sembunyikan semua div lain
                 loginForm.style.display = 'none';
                 scannerApp.style.display = 'none';
-                // Hentikan scanner jika sedang berjalan
                 html5QrCode.stop().catch(() => {});
 
                 // Tampilkan dashboard
                 dashboardTitleEl.textContent = `Selamat Datang, ${namaPanitia}`;
                 dashboardView.style.display = 'flex'; // Tampilkan dashboard
                 
-                // Muat data dashboard pertama kali
-                loadDashboardData();
-                // Atur auto-refresh setiap 10 detik
-                // Hapus interval lama jika ada, agar tidak duplikat
+                // HAPUS loadDashboardData() DARI SINI
+                // Data pertama sudah di-render oleh handleLogin()
+                
+                // Atur auto-refresh (untuk panggilan BERIKUTNYA)
                 if (dashboardInterval) clearInterval(dashboardInterval); 
                 dashboardInterval = setInterval(loadDashboardData, 10000); 
             }
 
+            // --- FUNGSI LOAD DATA (DIMODIFIKASI) ---
+            // Fungsi ini sekarang HANYA untuk auto-refresh
             async function loadDashboardData() {
                 try {
+                    // Panggil webhook dashboard untuk refresh
                     const response = await fetch(dashboardWebhookUrl);
-                    if (!response.ok) throw new Error('Gagal ambil data');
+                    if (!response.ok) throw new Error('Gagal ambil data refresh');
                     
-                    const data = await response.json(); // Data = [ {json: {...}}, {json: {...}} ]
-                    
-                    // 1. Update total
-                    totalHadirEl.textContent = data.length;
-
-                    // 2. Buat daftar list
-                    if (data.length === 0) {
-                        daftarHadirEl.innerHTML = "<p>Belum ada peserta yang hadir.</p>";
-                        return;
-                    }
-
-                    let html = '<ul>';
-                    for (const item of data) {
-                        // Sesuaikan 'Nama' dan 'Kedatangan' dengan nama kolom di Google Sheet Anda
-                        const nama = item.json.Nama || 'Nama Tidak Ditemukan';
-                        const waktuDatang = item.json.Kedatangan ? new Date(item.json.Kedatangan).toLocaleTimeString('id-ID') : 'N/A';
-                        html += `<li>${nama} - <i>(${waktuDatang})</i></li>`;
-                    }
-                    html += '</ul>';
-                    daftarHadirEl.innerHTML = html;
-
+                    const data = await response.json(); 
+                    renderDashboard(data); // Panggil fungsi render
                 } catch (err) {
-                    daftarHadirEl.innerHTML = `<p style="color: #ffc0cb;">Gagal memuat data... ${err.message}</p>`;
+                    // Hanya tampilkan error kecil, jangan ganggu daftar yg sudah ada
+                    console.warn(err.message); 
                 }
             }
 
-            // --- FUNGSI-FUNGSI SCANNER ---
+            // --- FUNGSI-FUNGSI SCANNER (TETAP SAMA) ---
             function muatDaftarSuara() {
                 daftarSuara = window.speechSynthesis.getVoices();
             }
@@ -292,7 +307,7 @@
             function startScanner() {
                 statusElement.textContent = "Arahkan kamera ke QR Code Peserta";
                 scanAgainButton.style.display = 'none';
-                backToDashboardButton.style.display = 'none'; // Sembunyikan tombol kembali
+                backToDashboardButton.style.display = 'none'; 
                 qrReaderDiv.style.display = 'block';
                 
                 html5QrCode.start(
@@ -313,7 +328,6 @@
                     statusElement.textContent = `Mengirim data untuk ${namaPeserta}...`;
 
                     const timestamp = new Date().toISOString();
-                    // --- (OPSIONAL) Kirim nama Panitia yg scan ---
                     const finalData = `hash=${decodedText}&Kedatangan=${timestamp}&Panitia=${namaPanitia}`;
 
                     fetch(`${webhookUrl}?${finalData}`)
@@ -326,13 +340,13 @@
                                 ucapkanTeks("Absensi gagal");
                             }
                             scanAgainButton.style.display = 'block';
-                            backToDashboardButton.style.display = 'block'; // Tampilkan tombol kembali
+                            backToDashboardButton.style.display = 'block'; 
                         })
                         .catch(error => {
                             statusElement.textContent = "Terjadi error saat mengirim data.";
                             ucapakanTeks("Koneksi error");
                             scanAgainButton.style.display = 'block';
-                            backToDashboardButton.style.display = 'block'; // Tampilkan tombol kembali
+                            backToDashboardButton.style.display = 'block'; 
                         });
                 });
             }
@@ -347,14 +361,10 @@
 
             // 2. Tombol Mulai Scan (dari Dashboard)
             startScanButton.addEventListener('click', () => {
-                // Sembunyikan dashboard & hentikan auto-refresh
                 dashboardView.style.display = 'none';
                 if (dashboardInterval) clearInterval(dashboardInterval);
-
-                // Tampilkan scanner
                 scannerApp.style.display = 'flex';
                 
-                // Aktifkan audio & mulai scanner
                 const utterance = new SpeechSynthesisUtterance(' ');
                 window.speechSynthesis.speak(utterance);
                 audioUnlocked = true;
@@ -364,7 +374,7 @@
             // 3. Tombol Scan Lagi
             scanAgainButton.addEventListener('click', startScanner);
 
-            // 4. Tombol Kembali ke Dashboard (BARU)
+            // 4. Tombol Kembali ke Dashboard
             backToDashboardButton.addEventListener('click', showDashboard);
         });
     </script>
